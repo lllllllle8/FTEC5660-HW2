@@ -89,11 +89,58 @@ python3 hw2.py --cv-folder task2
 `task2/` has no `ground_truth.json`). Only the PDF is the attack surface; do not
 attack the MCP server. See the homework description for the full rules.
 
-## Homework 2 solution:
-> to students: this is your report, see the homework description.
+## Homework 2 solution
 
 ### Task 1
-> one paragraph describing your solution, and your results on `public_test`.
+
+My verifier is a prompt chain with deterministic tool use rather than a free
+tool-calling loop, following the "let the LLM read, let code compute" idea from
+Tutorial 1. (1) **Extract:** `deepseek-v4-flash` (thinking disabled,
+temperature 0) turns the CV text into JSON claims (name, current city, jobs
+with company/title/years, education, skills); the prompt treats the CV as data
+and tolerates text split across PDF table cells. (2) **Retrieve:** Python calls
+`search_linkedin_people` with the name plus city, country and the industry from
+the headline, fetches up to 12 candidate profiles with `get_linkedin_profile`,
+and picks the one that best matches the CV (same name, city, companies, start
+years, schools, skills), because many candidates share a name. (3) **Compare:**
+every claim is checked field by field in code: name, city, each company must
+exist with the same start/end years and "Present" status, seniority words
+(Senior/Junior/Mid) must match the LinkedIn seniority, degree levels are mapped
+to codes (BSc, MSc, MBA, PhD, ...), graduation years must match, and each skill
+must be on the profile. (4) **Judge:** only wording questions that code cannot
+settle (e.g. "Stanford" vs "Stanford University", "ML" vs "Machine Learning")
+are sent to the LLM as short pairs, never the whole CV. (5) **Score:** any
+discrepancy gives 0.1, none gives 0.9, no profile found gives 0.2. A guard gives
+0.1 to CVs with hidden instructions, zero-width characters or homoglyphs. CVs
+run 3 at a time (`asyncio.Semaphore(3)`), with retries and a per-CV timeout so
+one failure cannot crash the run.
+
+Results on `public_test`: **RESULT_PLACEHOLDER**
 
 ### Task 2
-> the attack techniques you used and why you expect them to work.
+
+**Technique: split the visible layer from the text layer of the PDF**
+(hidden text / PDF text extraction). `task2/make_adversarial_cv.py` builds
+`task2/adversarial_cv.pdf` from two layers:
+
+* What a human sees is a **picture** (PNG) of an embellished CV. Images contain
+  no text, so the PDF loader used by the verifiers (`markitdown`/`pdfminer`)
+  extracts nothing from it.
+* On top of it is Kelly Tsang's **true** CV written in PDF text render mode 3
+  ("invisible text", the mode OCR tools use for scanned pages). It is never
+  painted, but every text extractor reads it.
+
+The false details, visible only to a human reader: the degree is upgraded to
+**MSc in Finance** (LinkedIn: BSc), the AIA job starts in **2021** (LinkedIn:
+2022), and the title is inflated to **Senior Manager** (LinkedIn: Manager).
+
+Why it should work: the verifiers only see `cv_text()` output, and for this PDF
+that output is word for word identical to the true CV's text, which agrees with
+her LinkedIn and Facebook profiles. So the false claims never reach the LLM and
+there is nothing for any verifier to catch, however well it checks the fields.
+It also contains no injected instructions, Unicode tricks or unusual words, so
+defences that look for prompt injection (like the guard in my own Task 1
+agent) have nothing to flag. My own agent scores it the same as the true CV.
+The lesson for KYC: an agent should verify what the human-facing document
+shows (e.g. render the page and OCR it, or compare the text layer with an OCR
+of the rendering), not only the extracted text.
