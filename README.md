@@ -115,7 +115,7 @@ discrepancy gives 0.1, none gives 0.9, no profile found gives 0.2. A guard gives
 run 3 at a time (`asyncio.Semaphore(3)`), with retries and a per-CV timeout so
 one failure cannot crash the run.
 
-Results on `public_test`: **RESULT_PLACEHOLDER**
+Results on `public_test`: **7/7 correct (CV_4: start year 2015 vs 2014; CV_5: Senior Analyst vs junior Analyst; CV_7: Docker not on LinkedIn), about 1 minute per run.**
 
 ### Task 2
 
